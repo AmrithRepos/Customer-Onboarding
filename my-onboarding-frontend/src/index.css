@@ -1,0 +1,36 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Apply a system-ui font stack for a clean, modern aesthetic similar to Apple's interface. */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased; /* Smoother font rendering on macOS */
+  -moz-osx-font-smoothing: grayscale; /* Smoother font rendering on macOS */
+  background-color: #f8fafc; /* A very light gray background for the entire body */
+  margin: 0; /* Remove default body margin */
+}
+
+/* Optional: Enable smooth scrolling for in-page navigation (e.g., if you add anchor links) */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom styles for focus rings (optional but good for accessibility/aesthetics) */
+*:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.45); /* Tailwind's blue-500 with 45% opacity */
+  border-color: transparent; /* Prevent double border */
+}
+
+/* Style for textareas to allow vertical resizing only by default */
+textarea {
+  resize: vertical;
+}
+
+/* You might need this if you encounter issues with images being too large */
+img {
+  max-width: 100%;
+  height: auto;
+}
