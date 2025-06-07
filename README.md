@@ -36,7 +36,7 @@ This architecture demonstrates a clear separation of concerns, providing a scala
     * **AWS EC2**: For hosting Flask backend instances.
     * **AWS RDS (Relational Database Service)**: For managed PostgreSQL database.
 
-## Deployment Overview (Conceptual)
+## Deployment Overview
 
 The project is designed with a cloud-native deployment in mind, leveraging AWS services:
 
