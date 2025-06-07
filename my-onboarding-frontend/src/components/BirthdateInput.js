@@ -1,25 +1,35 @@
 // src/components/BirthdateInput.js
 import React from 'react';
-import InputField from './InputField'; // Import our reusable InputField
+import InputField from './InputField';
 
 /**
- * Component for collecting the user's birthdate.
+ * Renders a date input field for collecting a user's birthdate.
  *
- * @param {Object} props - Component props.
- * @param {string} props.value - The current value of the birthdate (e.g., "YYYY-MM-DD").
- * @param {function} props.onChange - Callback function triggered when the date changes.
- * @returns {JSX.Element} A date input field for birthdate.
+ * @param {object} props - Component props.
+ * @param {string} props.value - The current birthdate value (YYYY-MM-DD).
+ * @param {function} props.onChange - Callback for date changes.
+ * @param {string} [props.validationError] - Optional validation error message.
+ * @param {boolean} [props.required=false] - Indicates if the field is required.
+ * @returns {JSX.Element} A birthdate input.
  */
-const BirthdateInput = ({ value, onChange }) => {
+const BirthdateInput = ({ value, onChange, validationError, required }) => {
+
+  // Handles the change event from the input, passing the date string to the parent.
+  const handleChange = (e) => {
+    onChange(e.target.value);
+  };
+
   return (
     <InputField
       label="Birthdate"
       id="birthdate"
-      type="date" // This enables the native date picker
+      type="date" // Uses native date picker.
       value={value}
-      onChange={onChange}
-      required={true}
-      // Specific styling if needed, otherwise InputField's default applies
+      onChange={handleChange}
+      required={required}
+      validationError={validationError}
+      // Sets the maximum selectable date to today.
+      max={new Date().toISOString().split('T')[0]}
     />
   );
 };

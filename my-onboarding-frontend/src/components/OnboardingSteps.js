@@ -5,14 +5,25 @@ import InputField from './InputField';
 import Button from './Button';
 import AboutMeInput from './AboutMeInput';
 import AddressInput from './AddressInput';
-import BirthdateInput from './BirthdateInput'; // Keep if you still might use this dynamically
+import BirthdateInput from './BirthdateInput';
 import WizardProgress from './WizardProgress';
 
-// Helper component to render dynamic content based on admin config
-const DynamicPageContent = ({ pageNumber, data, onDataChange }) => {
+/**
+ * Renders dynamic content for each onboarding page based on admin configuration.
+ *
+ * @param {object} props - Component props.
+ * @param {number} props.pageNumber - The current onboarding page number.
+ * @param {object} props.data - The current form data for the onboarding steps.
+ * @param {function} props.onDataChange - Callback to update form data.
+ * @param {object} props.validationErrors - Object containing validation error messages.
+ * @param {object} props.adminConfig - The administrator's configuration for components and required fields.
+ * @returns {JSX.Element} Dynamic form content for a page.
+ */
+const DynamicPageContent = ({ pageNumber, data, onDataChange, validationErrors, adminConfig }) => {
   const { getComponentsForPage } = useOnboarding();
   const componentsToRender = getComponentsForPage(pageNumber);
 
+  // Displays a message if no components are configured for the current page.
   if (!componentsToRender.length) {
     return (
       <p className="text-primary-gray-600 text-center py-4 bg-primary-gray-50 rounded-lg border border-primary-gray-200">
@@ -24,31 +35,64 @@ const DynamicPageContent = ({ pageNumber, data, onDataChange }) => {
   return (
     <div className="space-y-6">
       {componentsToRender.map(({ id, Component }) => {
-        const propName = id;
+        // Determines if a field is required based on the admin configuration.
+        const isRequired = adminConfig?.requiredFields?.[id] || false;
 
+        // Renders specific components based on their ID.
         if (id === 'address') {
           return (
-            <Component
+            <AddressInput
               key={id}
-              address={data[propName] || {}}
-              onAddressChange={(newAddress) => onDataChange(propName, newAddress)}
+              address={data[id] || {}}
+              onAddressChange={(newAddress) => onDataChange(id, newAddress)}
+              validationErrors={validationErrors}
+              required={isRequired}
             />
           );
-        } else {
+        } else if (id === 'aboutMe') {
           return (
-            <Component
+            <AboutMeInput
               key={id}
-              value={data[propName] || ''}
-              onChange={(e) => onDataChange(propName, e.target.value)}
+              value={data[id] || ''}
+              onChange={(e) => onDataChange(id, e.target.value)}
+              validationError={validationErrors[id]}
+              required={isRequired}
+            />
+          );
+        } else if (id === 'birthdate') {
+          return (
+            <BirthdateInput
+              key={id}
+              value={data[id] || ''}
+              onChange={(dateString) => onDataChange(id, dateString)}
+              validationError={validationErrors[id]}
+              required={isRequired}
+            />
+          );
+        } else if (id === 'name') {
+          return (
+            <InputField
+              key={id}
+              label="Name"
+              id="name"
+              type="text"
+              value={data[id] || ''}
+              onChange={(e) => onDataChange(id, e.target.value)}
+              validationError={validationErrors[id]}
+              placeholder="Your name"
+              required={isRequired}
             />
           );
         }
+        return null; // Fallback for unhandled component IDs.
       })}
     </div>
   );
 };
 
-
+/**
+ * OnboardingSteps component guides users through a multi-step registration and data collection process.
+ */
 const OnboardingSteps = () => {
   const {
     userId,
@@ -66,27 +110,73 @@ const OnboardingSteps = () => {
   const [stepFormData, setStepFormData] = useState({});
   const [localError, setLocalError] = useState(null);
   const [emailInputError, setEmailInputError] = useState(null);
-  // No more onboardingCancelled state for age check, it's a localError on step 1
+  const [validationErrors, setValidationErrors] = useState({});
 
+  // Updates form data when onboardingData from context changes.
   useEffect(() => {
     setStepFormData(onboardingData);
   }, [onboardingData]);
 
+  // Handles general form field changes, clearing related validation errors.
   const handleFormChange = (id, value) => {
     setStepFormData(prevData => ({
       ...prevData,
       [id]: value
     }));
 
+    if (validationErrors[id]) {
+      setValidationErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[id];
+        return newErrors;
+      });
+    }
+
     if (id === 'email') {
       if (emailInputError) setEmailInputError(null);
     }
-    // Clear local error when user changes age input
     if (id === 'age' && localError === "Cannot Onboard You, Please have an adult to register your details.") {
       setLocalError(null);
     }
   };
 
+  // Handles changes specifically for the address input, merging new address data.
+  const handleAddressChange = useCallback((newAddress) => {
+    setStepFormData(prev => ({
+      ...prev,
+      address: {
+        ...prev.address,
+        ...newAddress
+      }
+    }));
+    setValidationErrors(prev => {
+      const newErrors = { ...prev };
+      for (const key in newAddress) {
+        if (newErrors[`address.${key}`]) {
+          delete newErrors[`address.${key}`];
+          return { ...newErrors, [`address.${key}`]: undefined };
+        }
+      }
+      return newErrors;
+    });
+  }, []);
+
+  // Handles changes for the birthdate input, storing the date string.
+  const handleDateChange = useCallback((dateString) => {
+    setStepFormData(prev => ({
+      ...prev,
+      birthdate: dateString || ''
+    }));
+    if (validationErrors.birthdate) {
+      setValidationErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.birthdate;
+        return newErrors;
+      });
+    }
+  }, [validationErrors]);
+
+  // Validates email format on input blur.
   const validateEmailOnBlur = () => {
     const email = stepFormData.email || '';
     if (!email) {
@@ -98,123 +188,118 @@ const OnboardingSteps = () => {
     }
   };
 
-
+  // Handles submission of the initial registration form (Step 1).
   const handleInitialSubmit = async (e) => {
     e.preventDefault();
-    console.log('1. handleInitialSubmit called.');
-    setLocalError(null); // Clear previous local errors
-    setEmailInputError(null); // Clear previous real-time email error
+    setLocalError(null);
+    setEmailInputError(null);
 
-    const { email, password, age } = stepFormData; // Destructure 'age'
+    const { username, email, password, age } = stepFormData;
 
-    // --- Validation for Registration Page ---
-    if (!email || !password || !age) {
-      setLocalError("Email, password, and age are required.");
+    // Client-side validation for registration fields.
+    if (!username || !email || !password || !age) {
+      setLocalError("Username, email, password, and age are required.");
+      if (!username) setValidationErrors(prev => ({ ...prev, username: "Username is required." }));
       if (!email) setEmailInputError("Email is required.");
-      console.log('2. Validation failed: Email, password, or age missing.');
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        setLocalError("Please enter a valid email address.");
-        setEmailInputError("Please enter a valid email address.");
-        console.log('2. Validation failed: Invalid email format.');
-        return;
+      setLocalError("Please enter a valid email address.");
+      setEmailInputError("Please enter a valid email address.");
+      return;
     }
     if (password.length < 6) {
-        setLocalError("Password must be at least 6 characters long.");
-        console.log('2. Validation failed: Password too short.');
-        return;
+      setLocalError("Password must be at least 6 characters long.");
+      return;
     }
 
     const parsedAge = parseInt(age, 10);
     if (isNaN(parsedAge) || parsedAge < 1) {
-        setLocalError("Please enter a valid age.");
-        console.log('2. Validation failed: Invalid age number.');
-        return;
+      setLocalError("Please enter a valid age.");
+      return;
     }
     if (parsedAge < 18) {
-        setLocalError("Cannot Onboard You, Please have an adult to register your details.");
-        console.log('2. Validation failed: User is under 18.');
-        return; // STOP onboarding process immediately
+      setLocalError("Cannot Onboard You, Please have an adult to register your details.");
+      return; // Stops onboarding for underage users.
     }
-    // --- End Validation for Registration Page ---
 
-    if (emailInputError) { // Check if there are any real-time email validation errors still present
-      setLocalError("Please fix the email validation error.");
-      console.log('2. Validation failed: Real-time email error still present.');
+    if (emailInputError || validationErrors.username) {
+      setLocalError("Please fix the validation errors.");
       return;
     }
 
-    console.log('3. Client-side validation passed. Attempting to register user...');
     try {
-      await handleRegisterUser(email, password, age); // Pass age to handleRegisterUser if needed for mock data
-      console.log('4. handleRegisterUser completed. Current step is now handled by the hook.');
+      await handleRegisterUser(username, email, password, age);
     } catch (err) {
       setLocalError(err.message || "Registration failed. Please try again.");
-      console.error('5. Error during handleRegisterUser:', err);
     }
   };
 
-
+  // Handles navigation to the next step, including validation for the current page.
   const handleNextStep = async (e) => {
     e.preventDefault();
     setLocalError(null);
+    setValidationErrors({}); // Clears previous validation errors.
 
-    let dataToPersist = {};
-    const pageComponents = adminConfig ? (adminConfig[`page${currentStep}`] || []) : [];
+    if (!adminConfig) {
+      setLocalError("Admin configuration not loaded.");
+      return;
+    }
 
-    let isValid = true;
-    for (const compId of pageComponents) {
-      const id = compId;
+    let currentValidationErrors = {};
+    const pageComponents = adminConfig[`page${currentStep}`] || [];
+    const requiredFields = adminConfig.requiredFields || {};
 
-      if (id === 'address') {
-        const addressFields = ['street', 'city', 'state', 'zip'];
-        const currentAddress = stepFormData.address || {};
-        const missingAddressFields = addressFields.filter(field => !currentAddress[field]);
-
-        if (missingAddressFields.length > 0) {
-          setLocalError(`Please fill in all address fields: ${missingAddressFields.map(f => f.charAt(0).toUpperCase() + f.slice(1)).join(', ')}.`);
-          isValid = false;
-          break;
+    // Validates each required component on the current page.
+    for (const { id } of pageComponents) {
+      if (requiredFields[id]) {
+        if (id === 'name') {
+          if (!stepFormData.name || stepFormData.name.trim() === '') {
+            currentValidationErrors.name = 'Name is required.';
+          }
+        } else if (id === 'aboutMe') {
+          if (!stepFormData.aboutMe || stepFormData.aboutMe.trim().length < 20) {
+            currentValidationErrors.aboutMe = 'About Me is required (min 20 characters).';
+          }
+        } else if (id === 'address') {
+          const addressFields = ['street', 'city', 'state', 'zip'];
+          const currentAddress = stepFormData.address || {};
+          addressFields.forEach(field => {
+            if (!currentAddress[field] || currentAddress[field].trim() === '') {
+              currentValidationErrors[`address.${field}`] = `${field.charAt(0).toUpperCase() + field.slice(1)} is required.`;
+            }
+          });
+        } else if (id === 'birthdate') {
+          if (!stepFormData.birthdate || stepFormData.birthdate.trim() === '') {
+            currentValidationErrors.birthdate = 'Birthdate is required.';
+          }
         }
-        dataToPersist.address = currentAddress;
-      } else if (id === 'aboutMe') {
-        if (!stepFormData[id] || stepFormData[id].trim().length < 20) {
-          setLocalError(`Please tell us a bit more about yourself (min 20 characters).`);
-          isValid = false;
-          break;
-        }
-        dataToPersist[id] = stepFormData[id];
-      }
-      // Removed birthdate validation here, as age is now handled at registration
-      else if (id === 'birthdate') { // Still allow birthdate input if configured, but no age validation
-        if (!stepFormData[id]) {
-          setLocalError(`Please provide your birthdate.`);
-          isValid = false;
-          break;
-        }
-        dataToPersist[id] = stepFormData[id];
       }
     }
 
-    if (!isValid) {
+    // If validation errors exist, update state and stop progression.
+    if (Object.keys(currentValidationErrors).length > 0) {
+      setValidationErrors(currentValidationErrors);
+      setLocalError("Please fix the validation errors on this page.");
       return;
     }
 
     try {
-      await nextStep(dataToPersist);
+      await nextStep(stepFormData);
     } catch (err) {
       setLocalError(err.message || "Failed to save data and proceed. Please try again.");
     }
   };
 
+  // Handles navigation to the previous step.
   const handlePrevStep = useCallback(() => {
     setLocalError(null);
+    setValidationErrors({});
     prevStep();
   }, [prevStep]);
 
-
-  if (loading || adminConfig === null) {
+  // Displays a loading indicator while configuration is fetched.
+  if (loading && adminConfig === null) {
     return (
       <div className="flex items-center justify-center p-8 bg-white rounded-xl shadow-soft-xl w-full max-w-lg mx-auto border border-primary-gray-100 min-h-[300px]">
         <p className="text-primary-gray-600 text-lg animate-pulse">Loading onboarding flow configuration...</p>
@@ -222,16 +307,16 @@ const OnboardingSteps = () => {
     );
   }
 
-  // No special cancellation screen here for age, it's a local error on step 1
-
   return (
     <div className="p-8 bg-white rounded-xl shadow-soft-xl w-full max-w-lg mx-auto border border-primary-gray-100">
       <h2 className="text-3xl font-bold text-primary-gray-800 mb-6 text-center">
         Onboarding Wizard
       </h2>
 
-      <WizardProgress />
+      {/* Progress indicator for the onboarding steps. */}
+      <WizardProgress currentStep={currentStep} totalSteps={adminConfig ? Object.keys(adminConfig).length + 1 : 4} />
 
+      {/* Displays global error messages from context or local state. */}
       {error && (
         <p className="text-error-red text-center mb-4 p-3 bg-error-red-50 border border-error-red-200 rounded-lg text-sm">
           <span className="font-semibold">Error:</span> {error}
@@ -244,9 +329,20 @@ const OnboardingSteps = () => {
       )}
 
       <form onSubmit={e => e.preventDefault()} className="space-y-6">
+        {/* Renders content for Step 1 (Registration). */}
         {currentStep === 1 && (
           <div>
             <h3 className="text-xl font-semibold text-primary-gray-800 mb-5 text-center">Create Your Account</h3>
+            <InputField
+              label="Username"
+              id="username"
+              type="text"
+              value={stepFormData.username || ''}
+              onChange={(e) => handleFormChange('username', e.target.value)}
+              validationError={validationErrors.username}
+              placeholder="Your username"
+              required={true}
+            />
             <InputField
               label="Email"
               id="email"
@@ -273,7 +369,7 @@ const OnboardingSteps = () => {
               type="number"
               value={stepFormData.age || ''}
               onChange={(e) => handleFormChange('age', e.target.value)}
-              placeholder="e.g., 25"
+              placeholder=">18e.g., 25"
               required={true}
             />
             <Button onClick={handleInitialSubmit} type="submit" className="w-full mt-6">
@@ -282,13 +378,20 @@ const OnboardingSteps = () => {
           </div>
         )}
 
+        {/* Renders content for Step 2 (Dynamic form fields). */}
         {currentStep === 2 && (
           <div>
             <h3 className="text-xl font-semibold text-primary-gray-800 mb-5 text-center">Tell Us More</h3>
             <DynamicPageContent
               pageNumber={2}
               data={stepFormData}
-              onDataChange={handleFormChange}
+              onDataChange={(id, value) => {
+                if (id === 'address') handleAddressChange(value);
+                else if (id === 'birthdate') handleDateChange(value);
+                else handleFormChange(id, value);
+              }}
+              validationErrors={validationErrors}
+              adminConfig={adminConfig}
             />
             <div className="flex justify-between mt-8">
               <Button onClick={handlePrevStep} className="bg-primary-gray-500 hover:bg-primary-gray-600 px-6 py-2.5 rounded-xl text-base shadow-soft-sm">Previous</Button>
@@ -297,13 +400,20 @@ const OnboardingSteps = () => {
           </div>
         )}
 
+        {/* Renders content for Step 3 (Dynamic form fields). */}
         {currentStep === 3 && (
           <div>
             <h3 className="text-xl font-semibold text-primary-gray-800 mb-5 text-center">Final Details</h3>
             <DynamicPageContent
               pageNumber={3}
               data={stepFormData}
-              onDataChange={handleFormChange}
+              onDataChange={(id, value) => {
+                if (id === 'address') handleAddressChange(value);
+                else if (id === 'birthdate') handleDateChange(value);
+                else handleFormChange(id, value);
+              }}
+              validationErrors={validationErrors}
+              adminConfig={adminConfig}
             />
             <div className="flex justify-between mt-8">
               <Button onClick={handlePrevStep} className="bg-primary-gray-500 hover:bg-primary-gray-600 px-6 py-2.5 rounded-xl text-base shadow-soft-sm">Previous</Button>
@@ -312,6 +422,7 @@ const OnboardingSteps = () => {
           </div>
         )}
 
+        {/* Renders completion screen for Step 4. */}
         {currentStep === 4 && (
           <div className="text-center py-10">
             <svg className="w-24 h-24 text-success-green mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -319,7 +430,7 @@ const OnboardingSteps = () => {
             </svg>
             <h3 className="text-3xl font-bold text-success-green mb-4">Onboarding Complete!</h3>
             <p className="text-primary-gray-700 text-lg mb-6">
-              Thank you for completing your onboarding. Your data has been saved (mocked).
+              Thank you for completing your onboarding. An agent will be in touch with you shortly.
             </p>
             <Button onClick={resetOnboarding} className="bg-success-green hover:bg-success-green-600 px-8 py-3 rounded-xl text-base shadow-soft-sm">
               Start New Onboarding

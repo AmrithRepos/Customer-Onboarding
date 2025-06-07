@@ -1,22 +1,24 @@
 // src/components/AdminPanel.js
 import React, { useState, useEffect } from 'react';
-import { useOnboarding } from '../hooks/useOnboarding'; // Import our custom onboarding hook
-import Button from './Button'; // Reusable button
+import { useOnboarding } from '../hooks/useOnboarding';
+import Button from './Button';
 
+/**
+ * AdminPanel component allows configuration of onboarding flow components.
+ * Users can select which data input components appear on Page 2 and Page 3.
+ */
 const AdminPanel = () => {
   const { adminConfig, loading, error, updateAdminConfiguration, componentMap } = useOnboarding();
-  // Local state to manage configuration changes before saving
+  // Local state for managing configuration changes before saving.
   const [localConfig, setLocalConfig] = useState(null);
-  const [saveMessage, setSaveMessage] = useState(null); // To show success/error message after saving
+  // State to display success or error messages after saving.
+  const [saveMessage, setSaveMessage] = useState(null);
 
-  // Initialize local config when adminConfig from context loads or changes
+  // Initializes localConfig when adminConfig from context is loaded or updated.
   useEffect(() => {
     if (adminConfig) {
-      // Deep copy to ensure local state doesn't mutate context state directly
-      // Ensure all page keys (page1, page2, page3) are present, even if empty, for consistency
+      // Creates a deep copy to prevent direct mutation of context state.
       const initialLocalConfig = {
-        // We still initialize page1 here to handle any existing data
-        // even though the UI for it is removed.
         page1: adminConfig.page1 || [],
         page2: adminConfig.page2 || [],
         page3: adminConfig.page3 || [],
@@ -25,58 +27,75 @@ const AdminPanel = () => {
     }
   }, [adminConfig]);
 
-  // Handle checkbox changes for component assignments
+  // Handles changes to component checkboxes for each page.
   const handleCheckboxChange = (page, componentId) => {
-    setSaveMessage(null); // Clear previous save message
+    setSaveMessage(null); // Clears previous save messages.
     setLocalConfig(prevConfig => {
-      // Ensure prevConfig[page] exists and is an array before processing
       const currentPageComponents = new Set(prevConfig[page] || []);
+      // Adds or removes the component ID based on current selection.
       if (currentPageComponents.has(componentId)) {
         currentPageComponents.delete(componentId);
       } else {
         currentPageComponents.add(componentId);
       }
 
+      let newComponentsArray = Array.from(currentPageComponents);
+
+      // Custom sorting for Page 2 components (e.g., 'name' before 'aboutMe').
+      if (page === 'page2') {
+        const order = ['name', 'aboutMe', 'address', 'birthdate'];
+        newComponentsArray.sort((a, b) => {
+          const indexA = order.indexOf(a);
+          const indexB = order.indexOf(b);
+
+          if (indexA === -1 && indexB === -1) return 0;
+          if (indexA === -1) return 1;
+          if (indexB === -1) return -1;
+
+          return indexA - indexB;
+        });
+      }
+
       const newConfig = {
         ...prevConfig,
-        [page]: Array.from(currentPageComponents),
+        [page]: newComponentsArray,
       };
 
-      // Client-side validation: Ensure pages 2 and 3 have at least one component
+      // Client-side validation: ensures Page 2 and Page 3 have at least one component.
       if (page === 'page2' && newConfig.page2.length === 0) {
         setSaveMessage('Page 2 must have at least one component. Please select one.');
-        return prevConfig; // Revert if invalid
+        return prevConfig; // Reverts state if validation fails.
       }
-      if (newConfig.page3.length === 0) { // Assuming page3 is always required
+      if (newConfig.page3.length === 0) {
         setSaveMessage('Page 3 must have at least one component. Please select one.');
-        return prevConfig; // Revert if invalid
+        return prevConfig; // Reverts state if validation fails.
       }
 
       return newConfig;
     });
   };
 
-  // Handle saving the configuration
+  // Handles saving the updated configuration to the backend.
   const handleSaveConfig = async () => {
     if (!localConfig) return;
 
-    // Ensure all pages have at least an empty array to be sent, even if no components are selected
-    // This prevents the backend from receiving 'undefined' for pages that were never touched
+    // Prepares the configuration to be sent, ensuring all pages are included.
     const configToSend = {
-      page1: localConfig.page1 || [], // Page 1 data will still be sent, but cannot be configured via UI
+      page1: localConfig.page1 || [],
       page2: localConfig.page2 || [],
       page3: localConfig.page3 || [],
     };
 
     try {
-      await updateAdminConfiguration(configToSend); // Send the prepared config
+      await updateAdminConfiguration(configToSend);
       setSaveMessage('Configuration saved successfully!');
     } catch (err) {
       setSaveMessage(`Failed to save configuration: ${error || err.message}`);
     }
   };
 
-  if (loading && !localConfig) { // Show loading only if config hasn't been loaded yet
+  // Displays loading message while fetching config.
+  if (loading && !localConfig) {
     return (
       <div className="flex items-center justify-center p-8 bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto border border-gray-100 min-h-[300px]">
         <p className="text-gray-600 text-lg animate-pulse">Loading admin panel configuration...</p>
@@ -84,19 +103,19 @@ const AdminPanel = () => {
     );
   }
 
-  // Display error from the context if it's related to admin config loading
-  if (error && !localConfig) { // Only show error if no config could be loaded at all
+  // Displays error if configuration fails to load.
+  if (error && !localConfig) {
     return (
       <div className="text-center p-8 text-red-600 bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto border border-gray-100">
         <h3 className="text-xl font-bold mb-3">Error Loading Configuration</h3>
         <p>Error loading admin configuration: {error}</p>
-        <p className="mt-2">Please ensure your backend is running and accessible at `http://localhost:5000`.</p>
+        <p className="mt-2">Please ensure your backend is running and accessible.</p>
         <p className="mt-2 text-blue-600 text-sm">Default components are being used for pages 2 and 3.</p>
       </div>
     );
   }
 
-  // If localConfig is still null (e.g., initial load error and no default), handle gracefully
+  // Displays a generic message if configuration is not available.
   if (!localConfig) {
     return (
       <div className="text-center p-8 text-gray-600 bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto border border-gray-100">
@@ -105,7 +124,7 @@ const AdminPanel = () => {
     );
   }
 
-  // Get a list of all available component IDs from our componentMap
+  // Extracts all available component IDs from the component map.
   const allComponentIds = Object.keys(componentMap);
 
   return (
@@ -117,6 +136,7 @@ const AdminPanel = () => {
         Configure which data collection components appear on the onboarding pages.
       </p>
 
+      {/* Displays save success or error messages. */}
       {saveMessage && (
         <p className={`text-center mb-6 p-3 rounded-lg font-medium text-sm
           ${saveMessage.includes('Failed') ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-green-100 text-green-700 border border-green-200'}`
@@ -125,14 +145,9 @@ const AdminPanel = () => {
         </p>
       )}
 
-      {/* Adjusted grid layout to potentially make Page 2 and Page 3 display better side-by-side
-          if the screen is wide enough, or stack on smaller screens.
-          Changed to grid-cols-1 for small screens, md:grid-cols-2 for medium upwards.
-      */}
+      {/* Grid layout for page configurations, stacks on small screens. */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Removed "Configuration for Page 1" div entirely */}
-
-        {/* Configuration for Page 2 */}
+        {/* Configuration section for Page 2 components. */}
         <div className="border border-gray-200 p-6 rounded-lg bg-gray-50 shadow-inner">
           <h3 className="text-xl font-semibold text-gray-700 mb-4 pb-2 border-b border-gray-200">
             Page 2 Components
@@ -155,7 +170,7 @@ const AdminPanel = () => {
           </div>
         </div>
 
-        {/* Configuration for Page 3 */}
+        {/* Configuration section for Page 3 components. */}
         <div className="border border-gray-200 p-6 rounded-lg bg-gray-50 shadow-inner">
           <h3 className="text-xl font-semibold text-gray-700 mb-4 pb-2 border-b border-gray-200">
             Page 3 Components
@@ -179,6 +194,7 @@ const AdminPanel = () => {
         </div>
       </div>
 
+      {/* Save configuration button. */}
       <div className="mt-8 text-center">
         <Button
           onClick={handleSaveConfig}

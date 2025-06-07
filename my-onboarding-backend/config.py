@@ -1,22 +1,36 @@
-# flask_backend/config.py
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file, if present.
+# This makes environment variables defined in .env accessible via os.environ.
+load_dotenv()
 
 class Config:
-    # Flask Secret Key for session management and security.
-    # IMPORTANT: Change this to a strong, random key in production.
-    # Replace 'your_super_secret_key_here_please_change_this_in_prod' with a truly random, strong key.
+    """
+    Configuration class for the Flask application.
+
+    This class defines various configuration parameters for the Flask app,
+    such as secret keys, database URI, and SQLAlchemy settings.
+    It prioritizes environment variables for production readiness but
+    provides sensible fallbacks for local development.
+    """
+
+    # Secret key for session management and other security-related functions.
+    # It's crucial to change this in production and keep it secure.
     SECRET_KEY = os.environ.get('SECRET_KEY', 'your_super_secret_key_here_please_change_this_in_prod')
 
-    # SQLAlchemy Database Configuration for PostgreSQL
-    # Using the provided username, password, default host (localhost), port (5432), and database name (onboarding_db).
-    # Format: postgresql://username:password@host:port/database_name
+    # SQLAlchemy Database URI.
+    # It first attempts to get the DATABASE_URL from environment variables (e.g., for production).
+    # If not found, it falls back to a local PostgreSQL connection string.
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         'DATABASE_URL',
-        'postgresql://onboarding:onboarding1234@localhost:5432/onboarding_db'
+        'postgresql://onboarding:onboarding1234@localhost:5432/onboarding_db'  # Fallback for local development.
     )
-    SQLALCHEMY_TRACK_MODIFICATIONS = False # Suppresses a warning
 
-    # Flask-CORS configuration
-    # This allows your React frontend (running on a different port/origin) to make requests to Flask.
-    # In production, you'd typically restrict origins to your frontend's domain.
+    # Disables SQLAlchemy event system tracking, which consumes extra memory.
+    # It's recommended to set this to False unless you specifically need it.
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Defines the CORS headers that will be allowed.
+    # In this case, it explicitly allows 'Content-Type' header.
     CORS_HEADERS = 'Content-Type'

@@ -1,184 +1,208 @@
 // src/components/UserDataTable.js
-import React, { useState, useEffect } from 'react';
-import { useOnboarding } from '../hooks/useOnboarding'; // Import our custom onboarding hook
+import React, { useState, useEffect, useCallback } from 'react';
+import { useOnboarding } from '../hooks/useOnboarding';
 
+/**
+ * Helper function to capitalize the first letter of a string
+ * and convert camelCase to Title Case (e.g., 'aboutMe' -> 'About Me').
+ * @param {string} string - The input string.
+ * @returns {string} The formatted string.
+ */
+const capitalizeFirstLetter = (string) => {
+  if (!string) return '';
+  return string
+    .replace(/([A-Z])/g, ' $1') // Add a space before capital letters.
+    .replace(/^./, (str) => str.toUpperCase()) // Capitalize the first letter.
+    .trim(); // Remove leading space if any.
+};
+
+/**
+ * Displays a table of registered users with their details and provides options to view and delete them.
+ */
 const UserDataTable = () => {
-  // Get functions and states from the hook
-  const { getAllUsersData, deleteUser, loading: hookLoading, error: hookError } = useOnboarding();
+  const {
+    getAllUsersData,
+    deleteUser,
+    loading: hookLoading,
+    error: hookError,
+    userListRefreshCounter
+  } = useOnboarding();
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedUser, setSelectedUser] = useState(null); // New state for selected user details
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
 
-  // Helper function to flatten the nested data for display in the table and detail view
+  /**
+   * Helper function to flatten nested user data for display.
+   * @param {object} userData - The user data object from the API.
+   * @returns {object} A flattened object with display-friendly keys and values.
+   */
   const flattenUserData = (userData) => {
-    // userData here is a direct user object from the backend (Flask's User model)
     const flattened = {
       'User ID': userData.id || 'N/A',
+      'Username': userData.username || 'N/A',
       'Email': userData.email || 'N/A',
       'Age': userData.age || 'N/A',
-      'Current Step': userData.current_step || 'N/A',
-      // Format dates for better readability
-      'Created At': userData.created_at ? new Date(userData.created_at).toLocaleDateString() : 'N/A',
-      'Updated At': userData.updated_at ? new Date(userData.updated_at).toLocaleDateString() : 'N/A',
+      'Created At': userData.created_at ? new Date(userData.created_at).toLocaleString() : 'N/A',
+      'Updated At': userData.updated_at ? new Date(userData.updated_at).toLocaleString() : 'N/A',
     };
 
-    // Flatten data from the 'onboarding_data' JSONB field
-    const onboardingData = userData.onboarding_data || {};
-
-    // Add fields that might be inside onboarding_data
-    if (onboardingData.aboutMe) {
-        flattened['About Me'] = onboardingData.aboutMe;
+    // Processes onboarding data, handling both object and stringified JSON formats.
+    if (userData.onboardingData && typeof userData.onboardingData === 'object') {
+      for (const key in userData.onboardingData) {
+        const value = userData.onboardingData[key];
+        if (typeof value === 'object' && value !== null) {
+          for (const subKey in value) {
+            const displaySubKey = capitalizeFirstLetter(subKey);
+            flattened[`${capitalizeFirstLetter(key)} ${displaySubKey}`] = value[subKey] || 'N/A';
+          }
+        } else {
+          const displayKey = capitalizeFirstLetter(key);
+          flattened[displayKey] = value || 'N/A';
+        }
+      }
+    } else if (typeof userData.onboardingData === 'string') {
+      try {
+        const parsedOnboardingData = JSON.parse(userData.onboardingData);
+        if (typeof parsedOnboardingData === 'object' && parsedOnboardingData !== null) {
+          for (const key in parsedOnboardingData) {
+            const value = parsedOnboardingData[key];
+            if (typeof value === 'object' && value !== null) {
+              for (const subKey in value) {
+                const displaySubKey = capitalizeFirstLetter(subKey);
+                flattened[`${capitalizeFirstLetter(key)} ${displaySubKey}`] = value[subKey] || 'N/A';
+              }
+            } else {
+              const displayKey = capitalizeFirstLetter(key);
+              flattened[displayKey] = value || 'N/A';
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Failed to parse onboardingData string:", e);
+      }
     }
-    if (onboardingData.birthdate) {
-        flattened['Birthdate'] = onboardingData.birthdate;
-    }
-    // Note: 'password' or 'password_hash' should NEVER be displayed in plain text or obscured here.
-    // The backend's /admin/users endpoint should not return password hashes, making this safe.
-
-    // Flatten address fields if they exist within onboardingData
-    if (onboardingData.address) {
-      flattened['Street'] = onboardingData.address.street || 'N/A';
-      flattened['City'] = onboardingData.address.city || 'N/A';
-      flattened['State'] = onboardingData.address.state || 'N/A';
-      flattened['Zip'] = onboardingData.address.zip || 'N/A';
-    }
-
     return flattened;
   };
 
-  // Function to fetch all users from the backend
-  const fetchUsers = async () => {
+  // Fetches user data from the backend.
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null); // Clear errors at the start of fetch
-      const data = await getAllUsersData(); // This now fetches from your backend
-      setUsers(data);
+      const data = await getAllUsersData();
+      if (Array.isArray(data)) {
+        setUsers(data);
+      } else {
+        setUsers([]);
+        setError("Fetched data is not an array.");
+      }
     } catch (err) {
-      console.error('Error fetching user data from backend:', err);
-      setError(err.message || 'Failed to fetch user data from backend.');
+      console.error("Failed to fetch users:", err);
+      setError(err.message);
+      setUsers([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [getAllUsersData]);
 
-  // Effect to load users initially and set up refreshing
+  // Effect hook to fetch users on component mount or when userListRefreshCounter changes.
   useEffect(() => {
     fetchUsers();
-    // Set up an interval to refresh data every few seconds
-    const intervalId = setInterval(fetchUsers, 5000); // Refresh every 5 seconds
+    // Clears success message after a delay.
+    const timer = setTimeout(() => {
+      setSuccessMessage(null);
+    }, 5000);
+    return () => clearTimeout(timer); // Cleans up the timer.
+  }, [userListRefreshCounter, fetchUsers]);
 
-    // Cleanup interval on component unmount
-    return () => clearInterval(intervalId);
-  }, [getAllUsersData]); // Add getAllUsersData to dependencies as it's a useCallback
+  const overallLoading = loading || hookLoading;
 
-  // Handle viewing details of a specific user
-  const handleViewDetails = (user) => {
-    setSelectedUser(user);
-  };
+  // Renders loading state.
+  if (overallLoading) return <div className="text-center py-4">Loading users...</div>;
+  // Renders error state.
+  if (error || hookError) return <div className="text-center py-4 text-red-600">Error: {error || hookError}</div>;
 
-  // Handle deleting a user
-  const handleDelete = async (userId) => {
-    if (window.confirm(`Are you sure you want to delete user ${userId}? This action cannot be undone.`)) {
-      try {
-        setLoading(true); // Indicate loading while deleting
-        const success = await deleteUser(userId); // Call the delete function from the hook
-        if (success) {
-          // Re-fetch the user list to show the updated state
-          await fetchUsers();
-          setSelectedUser(null); // Clear selected user if they were deleted
-          alert(`User ${userId} deleted successfully!`);
-        } else {
-            alert(`Failed to delete user ${userId}.`);
-        }
-      } catch (err) {
-        console.error('Error deleting user:', err);
-        setError(err.message || 'Failed to delete user.');
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
-
-  // Handle potential errors or loading states from the component or hook
-  if (loading || hookLoading) {
-    return (
-      <div className="flex items-center justify-center p-8 bg-white rounded-xl shadow-soft-xl w-full max-w-4xl mx-auto border border-primary-gray-100 min-h-[300px]">
-        <p className="text-primary-gray-600 text-lg animate-pulse">Loading user data from backend...</p>
-      </div>
-    );
-  }
-
-  if (error || hookError) {
-    return (
-      <div className="text-center p-8 text-error-red bg-white rounded-xl shadow-soft-xl w-full max-w-4xl mx-auto border border-primary-gray-100">
-        <h3 className="text-xl font-bold mb-3">Error Loading Data</h3>
-        <p>Error: {error || hookError}</p>
-        <p className="mt-2">Please ensure your Flask backend server is running and accessible.</p>
-      </div>
-    );
-  }
-
+  // Renders message when no users are registered.
   if (users.length === 0) {
     return (
-      <div className="text-center p-8 text-primary-gray-600 bg-white rounded-xl shadow-soft-xl w-full max-w-4xl mx-auto border border-primary-gray-100">
-        <p className="text-lg">No user data available yet.</p>
-        <p className="mt-2">Start the onboarding flow to add users!</p>
+      <div className="bg-white p-4 sm:p-8 rounded-xl shadow-lg border border-primary-gray-100 max-w-4xl mx-auto my-4 sm:my-8">
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-primary-gray-800 mb-4 sm:mb-6 text-center">Registered Users Data</h2>
+        <p className="text-center text-primary-gray-600 text-base sm:text-lg">No users registered yet.</p>
+        <p className="text-xs sm:text-sm text-primary-gray-500 mt-2 sm:mt-4 text-center">
+          Click on a "User ID" to view full details. Data refreshes automatically when a new user is registered or a user is deleted.
+        </p>
       </div>
     );
   }
 
-  // Extract all possible headers from all users' flattened data
-  const allFlattenedUsers = users.map(user => flattenUserData(user));
-  const headers = Array.from(new Set(allFlattenedUsers.flatMap(Object.keys)));
-
   return (
-    <div className="p-8 bg-white shadow-soft-xl rounded-xl w-full max-w-4xl mx-auto border border-primary-gray-100 overflow-hidden">
-      <h2 className="text-3xl font-bold text-primary-gray-800 mb-6 text-center">
-        All Registered User Data
-      </h2>
+    <div className="bg-white p-4 sm:p-8 rounded-xl shadow-lg border border-primary-gray-100 max-w-4xl mx-auto my-4 sm:my-8">
+      <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-700 mb-4 sm:mb-6 text-center">Registered Users Data</h2>
 
-      <div className="overflow-x-auto rounded-lg border border-primary-gray-200 shadow-soft-sm">
-        <table className="min-w-full divide-y divide-primary-gray-200">
-          <thead className="bg-primary-gray-50">
+      {/* Displays success messages */}
+      {successMessage && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
+          <strong className="font-bold">Success!</strong>
+          <span className="block sm:inline"> {successMessage}</span>
+          <span className="absolute top-0 bottom-0 right-0 px-4 py-3" onClick={() => setSuccessMessage(null)}>
+            <svg className="fill-current h-6 w-6 text-green-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.697l-2.651 2.652a1.2 1.2 0 1 1-1.697-1.697L8.303 10 5.651 7.348a1.2 1.2 0 1 1 1.697-1.697L10 8.303l2.651-2.652a1.2 1.2 0 1 1 1.697 1.697L11.697 10l2.652 2.651a1.2 1.2 0 0 1 0 1.698z"/></svg>
+          </span>
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-white rounded-lg overflow-hidden">
+          <thead className="bg-primary-blue-950 text-black-100 uppercase text-xs sm:text-sm leading-normal">
             <tr>
-              {headers.map((header) => (
-                <th
-                  key={header}
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-primary-gray-600 uppercase tracking-wider whitespace-nowrap"
-                >
-                  {header}
-                </th>
-              ))}
-              {/* Add a header for actions */}
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-primary-gray-600 uppercase tracking-wider whitespace-nowrap">
-                Actions
-              </th>
+              <th className="py-2 px-3 sm:py-3 sm:px-6 text-left">User ID</th>
+              <th className="py-2 px-3 sm:py-3 sm:px-6 text-left hidden sm:table-cell">Username</th>
+              <th className="py-2 px-3 sm:py-3 sm:px-6 text-left hidden sm:table-cell">Email</th>
+              <th className="py-2 px-3 sm:py-3 sm:px-6 text-left hidden sm:table-cell">Age</th>
+              <th className="py-2 px-3 sm:py-3 sm:px-6 text-left hidden sm:table-cell">Created At</th>
+              <th className="py-2 px-3 sm:py-3 sm:px-6 text-center">Actions</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-primary-gray-100">
-            {users.map((user, index) => {
-              const flattened = flattenUserData(user); // Pass the full user object
+          <tbody className="text-primary-gray-600 text-xs sm:text-sm font-light">
+            {users.map((user) => {
+              const flattened = flattenUserData(user);
               return (
-                <tr key={user.id} className={index % 2 === 0 ? 'bg-white' : 'bg-primary-gray-50'}>
-                  {headers.map((header) => (
-                    <td key={`${user.id}-${header}`} className="px-6 py-4 whitespace-nowrap text-sm text-primary-gray-900">
-                      {flattened[header] || '-'} {/* Display '-' if data is missing for a header */}
-                    </td>
-                  ))}
-                  {/* Action buttons column */}
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                <tr key={user.id} className="border-b border-primary-gray-200 hover:bg-primary-gray-50">
+                  <td
+                    className="py-2 px-3 sm:py-3 sm:px-6 text-left cursor-pointer text-blue-600 hover:underline"
+                    onClick={() => setSelectedUser(user)}
+                    title="Click to view full details"
+                  >
+                    <div className="flex items-center">
+                      <span className="font-medium">{flattened['User ID']}</span>
+                    </div>
+                  </td>
+                  <td className="py-2 px-3 sm:py-3 sm:px-6 text-left hidden sm:table-cell">
+                    <span>{flattened['Username']}</span>
+                  </td>
+                  <td className="py-2 px-3 sm:py-3 sm:px-6 text-left hidden sm:table-cell">
+                    <span>{flattened['Email']}</span>
+                  </td>
+                  <td className="py-2 px-3 sm:py-3 sm:px-6 text-left hidden sm:table-cell">
+                    <span>{flattened['Age']}</span>
+                  </td>
+                  <td className="py-2 px-3 sm:py-3 sm:px-6 text-left hidden sm:table-cell">
+                    <span>{flattened['Created At']}</span>
+                  </td>
+                  <td className="py-2 px-3 sm:py-3 sm:px-6 text-center">
                     <button
-                      onClick={() => handleViewDetails(user)}
-                      className="text-indigo-600 hover:text-indigo-900 mr-4"
-                    >
-                      View Details
-                    </button>
-                    <button
-                      onClick={() => handleDelete(user.id)}
-                      className="text-red-600 hover:text-red-900"
+                      onClick={async () => {
+                        if (window.confirm(`Are you sure you want to delete user ${user.email} (${user.id})?`)) {
+                          const success = await deleteUser(user.id);
+                          if (success) {
+                            setSuccessMessage("User data deleted.");
+                            setSelectedUser(null);
+                          }
+                        }
+                      }}
+                      className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 sm:px-3 rounded-md text-xs transition duration-150 ease-in-out"
                     >
                       Delete
                     </button>
@@ -189,28 +213,27 @@ const UserDataTable = () => {
           </tbody>
         </table>
       </div>
-      <p className="text-sm text-primary-gray-500 mt-4 text-center">
-        Data refreshes automatically every 5 seconds from the backend.
+      <p className="text-xs sm:text-sm text-primary-gray-500 mt-2 sm:mt-4 text-center">
+        Click on a "User ID" to view full details. Data refreshes automatically when a new user is registered or a user is deleted.
       </p>
 
-      {/* --- Selected User Details Display --- */}
+      {/* Renders detailed view of the selected user. */}
       {selectedUser && (
-        <div className="mt-8 p-8 bg-white rounded-xl shadow-lg border border-primary-gray-100 relative">
-          <h3 className="text-2xl font-bold text-primary-gray-800 mb-4 text-center">
-            Details for {selectedUser.email}
+        <div className="mt-4 sm:mt-8 p-4 sm:p-8 bg-white rounded-xl shadow-lg border border-primary-gray-100 relative">
+          <h3 className="text-xl sm:text-2xl font-bold text-primary-gray-800 mb-3 sm:mb-4 text-center">
+            Details of {selectedUser.username}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-primary-gray-800">
-            {/* Display flattened data in a neat form */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 text-primary-gray-800 text-sm sm:text-base">
             {Object.entries(flattenUserData(selectedUser)).map(([key, value]) => (
               <div key={key}>
-                <p className="font-semibold text-primary-gray-700">{key}:</p>
-                <p className="ml-2 text-primary-gray-900">{value}</p>
+                <p className="font-semibold text-primary-gray-700 text-sm sm:text-base">{key}:</p>
+                <p className="ml-2 text-primary-gray-900 text-sm sm:text-base">{value}</p>
               </div>
             ))}
           </div>
           <button
             onClick={() => setSelectedUser(null)}
-            className="absolute top-4 right-4 text-primary-gray-500 hover:text-primary-gray-800 text-3xl font-bold"
+            className="absolute top-2 right-2 sm:top-4 sm:right-4 text-primary-gray-500 hover:text-primary-gray-800 text-2xl sm:text-3xl font-bold"
             aria-label="Close details"
           >
             &times;

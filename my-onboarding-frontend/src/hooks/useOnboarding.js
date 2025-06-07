@@ -1,56 +1,59 @@
 // src/hooks/useOnboarding.js
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
-// IMPORTANT: Ensure you have these components created in src/components/.
+// IMPORTANT: Ensure these components are created in src/components/.
 // These imports are typically in OnboardingSteps.js, but are listed here
 // because `getComponentsForPage` needs to reference them for dynamic rendering.
 import AboutMeInput from '../components/AboutMeInput';
 import AddressInput from '../components/AddressInput';
-import BirthdateInput from '../components/BirthdateInput'; // Keep if used in admin config
+import BirthdateInput from '../components/BirthdateInput';
 
-
-// Define the Onboarding Context
+// Defines the Onboarding Context.
 const OnboardingContext = createContext(null);
 
-// Base URL for your Flask backend. Make sure this matches your Flask server address.
-const API_BASE_URL = 'http://127.0.0.1:5001';
+// Base URL for the Flask backend. Make sure this matches your Flask server address.
+const API_BASE_URL = 'https://duysox1y84boc.cloudfront.net';
 
 /**
  * Provides onboarding state and functions to its children components.
  * Manages user ID, onboarding data, current step, and admin configuration.
- * All data persistence is now handled via the Flask backend.
+ * All data persistence is handled via the Flask backend.
+ *
+ * @param {object} props - Component props.
+ * @param {React.ReactNode} props.children - Child components to be rendered within the provider's scope.
+ * @returns {JSX.Element} The OnboardingProvider component.
  */
 export const OnboardingProvider = ({ children }) => {
-  // Read initial userId from localStorage. This ID will be used to fetch data from backend.
+  // Initializes userId from localStorage. This ID is used to fetch data from the backend.
   const [userId, setUserId] = useState(() => localStorage.getItem('onboardingUserId') || null);
   const [onboardingData, setOnboardingData] = useState({});
-  const [currentStep, setCurrentStep] = useState(1); // Frontend steps are 1-indexed
-  const [adminConfig, setAdminConfig] = useState(null); // Will load from backend
+  const [currentStep, setCurrentStep] = useState(1); // Frontend steps are 1-indexed.
+  const [adminConfig, setAdminConfig] = useState(null); // Will load from backend.
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // State to trigger user list refresh in UserDataTable.
+  const [userListRefreshCounter, setUserListRefreshCounter] = useState(0);
 
-  // A ref to track if this is the initial mount.
-  // This helps prevent initial load logic from re-running unnecessarily due to StrictMode or other re-renders.
+  // A ref to track if this is the initial mount, preventing unnecessary re-runs.
   const isInitialMount = useRef(true);
 
-  // Data structure for customizable components (used in AdminPanel for display purposes)
+  // Data structure for customizable components (used in AdminPanel for display purposes).
   const componentMap = {
     aboutMe: 'About Me',
     address: 'Address',
     birthdate: 'Birthdate',
-    // Add more component mappings here as you create new customizable input components
+    // Add more component mappings here as new customizable input components are created.
   };
 
-
   // --- Initial Load Effect (runs only once on mount) ---
-  // This useEffect handles loading initial admin config and existing user session data from backend.
+  // Handles loading initial admin config and existing user session data from the backend.
   useEffect(() => {
     const loadInitialState = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        // 1. Load Admin Config from backend
+        // 1. Load Admin Config from backend.
         console.log("Fetching admin config from backend...");
         const adminConfigResponse = await fetch(`${API_BASE_URL}/admin/config`);
         if (!adminConfigResponse.ok) {
@@ -60,40 +63,40 @@ export const OnboardingProvider = ({ children }) => {
         setAdminConfig(configData);
         console.log("Backend Admin Config Loaded:", configData);
 
-        // 2. Load User Progress if an existing userId is present in localStorage
+        // 2. Load User Progress if an existing userId is present in localStorage.
         const storedUserId = localStorage.getItem('onboardingUserId');
         if (storedUserId) {
           console.log(`Loading progress for user ${storedUserId} from backend...`);
           const userProgressResponse = await fetch(`${API_BASE_URL}/user/${storedUserId}/progress`);
 
           if (!userProgressResponse.ok) {
-            // If user not found on backend (e.g., DB reset, or invalid ID), treat as new user
+            // If user not found on backend (e.g., DB reset, or invalid ID), treat as new user.
             if (userProgressResponse.status === 404) {
               console.log(`User ${storedUserId} not found on backend. Starting new onboarding.`);
-              localStorage.removeItem('onboardingUserId'); // Clear stale ID
-              setUserId(null); // Reset userId state
+              localStorage.removeItem('onboardingUserId'); // Clear stale ID.
+              setUserId(null); // Reset userId state.
               setOnboardingData({});
-              setCurrentStep(1); // Set to initial registration step
+              setCurrentStep(1); // Set to initial registration step.
             } else {
               throw new Error(`HTTP error! status: ${userProgressResponse.status}`);
             }
           } else {
             const progressData = await userProgressResponse.json();
-            setUserId(storedUserId); // Ensure userId state matches localStorage
+            setUserId(storedUserId); // Ensures userId state matches localStorage.
             setOnboardingData(progressData.onboardingData || {});
-            setCurrentStep(progressData.currentStep); // Backend provides 1-indexed step
+            setCurrentStep(progressData.currentStep); // Backend provides 1-indexed step.
             console.log(`Loaded progress for user ${storedUserId}. Current step: ${progressData.currentStep}`);
           }
         } else {
           console.log("No user ID found in localStorage. Starting new onboarding.");
-          setCurrentStep(1); // Ensure new users start at step 1 (registration)
-          setOnboardingData({}); // Clear any residual data
+          setCurrentStep(1); // Ensures new users start at step 1 (registration).
+          setOnboardingData({}); // Clear any residual data.
         }
 
       } catch (e) {
         console.error("Initial Load Error:", e);
         setError(`Failed to load initial data: ${e.message}. Please ensure backend is running.`);
-        // Fallback to default/reset if backend connection fails
+        // Fallback to default/reset if backend connection fails.
         localStorage.removeItem('onboardingUserId');
         setUserId(null);
         setOnboardingData({});
@@ -103,16 +106,24 @@ export const OnboardingProvider = ({ children }) => {
       }
     };
 
-    if (isInitialMount.current) { // Only run this effect on the very first mount
+    if (isInitialMount.current) { // Only run this effect on the very first mount.
       loadInitialState();
-      isInitialMount.current = false; // Mark that initial mount logic has run
+      isInitialMount.current = false; // Mark that initial mount logic has run.
     }
-  }, []); // Empty dependency array ensures this runs only once on mount
-
+  }, []); // Empty dependency array ensures this runs only once on mount.
 
   // --- User Onboarding Actions (Backend Communication) ---
 
-  const handleRegisterUser = useCallback(async (email, password, age) => {
+  /**
+   * Handles user registration with the backend.
+   * @param {string} username - The user's chosen username.
+   * @param {string} email - The user's email address.
+   * @param {string} password - The user's password.
+   * @param {number} age - The user's age.
+   * @returns {Promise<void>} A promise that resolves when registration is successful.
+   * @throws {Error} If registration fails.
+   */
+  const handleRegisterUser = useCallback(async (username, email, password, age) => {
     try {
       setLoading(true);
       setError(null);
@@ -121,34 +132,39 @@ export const OnboardingProvider = ({ children }) => {
       const response = await fetch(`${API_BASE_URL}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, age }),
+        body: JSON.stringify({ username, email, password, age }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        // Backend returns error.message for specific errors (e.g., age, email exists)
         throw new Error(data.error || 'Registration failed.');
       }
 
       setUserId(data.userId);
-      localStorage.setItem('onboardingUserId', data.userId); // Persist userId in localStorage for returning users
-      setOnboardingData(data.onboardingData); // Set initial data (email, age)
-      // After successful registration (which is conceptually step 1),
-      // we want to immediately move the user to the next logical onboarding step, which is step 2.
-      setCurrentStep(2);
+      localStorage.setItem('onboardingUserId', data.userId);
+      setOnboardingData(data.onboardingData);
+      setCurrentStep(2); // Move to the next step after successful registration.
+      setUserListRefreshCounter(prev => prev + 1); // Triggers refresh for UserDataTable.
 
       console.log('User registered successfully on backend. User ID:', data.userId);
 
     } catch (err) {
       console.error('Registration failed:', err);
       setError(err.message || 'Registration failed unexpectedly.');
-      throw err; // Re-throw to allow component (e.g., OnboardingSteps) to handle form-specific errors
+      throw err;
     } finally {
       setLoading(false);
     }
   }, []);
 
+  /**
+   * Updates user onboarding data on the backend for a specific step.
+   * @param {object} dataForStep - The data to be persisted for the current step.
+   * @param {number} currentFrontendStep - The current step number on the frontend.
+   * @returns {Promise<void>} A promise that resolves when data is updated.
+   * @throws {Error} If user is not registered or update fails.
+   */
   const handleUpdateUserData = useCallback(async (dataForStep, currentFrontendStep) => {
     if (!userId) {
       setError("User not registered. Cannot update data.");
@@ -160,11 +176,11 @@ export const OnboardingProvider = ({ children }) => {
       console.log(`Updating user data for step ${currentFrontendStep} for user ${userId}...`);
 
       const response = await fetch(`${API_BASE_URL}/user/${userId}/update_data`, {
-        method: 'PUT', // Using PUT for updating an existing resource
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          onboardingData: dataForStep, // Send partial data for this step
-          currentStep: currentFrontendStep, // Send the step that was just completed/saved
+          onboardingData: dataForStep,
+          currentStep: currentFrontendStep,
         }),
       });
 
@@ -174,7 +190,9 @@ export const OnboardingProvider = ({ children }) => {
         throw new Error(data.error || `Failed to save data for step ${currentFrontendStep}.`);
       }
 
-      setOnboardingData(data.onboardingData); // Update local state with merged data from backend
+      setOnboardingData(data.onboardingData);
+      setUserListRefreshCounter(prev => prev + 1); // Triggers refresh for UserDataTable after update.
+
       console.log(`Data updated for user ${userId}, step ${currentFrontendStep}. Response:`, data);
 
     } catch (err) {
@@ -184,32 +202,32 @@ export const OnboardingProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [userId, onboardingData]);
+  }, [userId]);
 
-
+  /**
+   * Advances the onboarding process to the next step.
+   * Persists data for the current step if provided.
+   * Marks onboarding as complete if it's the final step.
+   * @param {object} [dataToPersist=null] - Optional data to save for the current step.
+   * @returns {Promise<void>} A promise that resolves when the step is advanced.
+   */
   const nextStep = useCallback(async (dataToPersist = null) => {
-    // `currentStep` here refers to the step the user is *currently on* before moving to the next one.
-    // So, if they are on step 2, and dataToPersist is provided, it's data for step 2.
     const stepToSaveFor = currentStep;
     const nextFrontendStep = currentStep + 1;
 
-    if (stepToSaveFor >= 1 && stepToSaveFor <= 3) { // Assuming steps 1, 2, 3 are data input steps
+    // Handles saving data and advancing for intermediate steps (1-3).
+    if (stepToSaveFor >= 1 && stepToSaveFor <= 3) {
       if (dataToPersist) {
         try {
-          // Persist data for the step they just completed/are on
           await handleUpdateUserData(dataToPersist, stepToSaveFor);
-          // Only advance step if data was successfully saved
           setCurrentStep(nextFrontendStep);
         } catch (err) {
-          // Error handling already in handleUpdateUserData, just prevent step advancement
-          return;
+          return; // Stop progression if data update fails.
         }
       } else {
-        // If no data to persist for a step (e.g., if step 1 is just registration, handled by handleRegisterUser,
-        // or a step has no user inputs but needs to progress)
         setCurrentStep(nextFrontendStep);
       }
-    } else if (stepToSaveFor === 4) { // Final completion step (frontend step 4)
+    } else if (stepToSaveFor === 4) { // Handles the final completion step.
       if (userId) {
         try {
           setLoading(true);
@@ -223,7 +241,8 @@ export const OnboardingProvider = ({ children }) => {
             throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
           }
           console.log('Onboarding marked as complete on backend.');
-          // currentStep will remain 4 (completion screen)
+          setUserListRefreshCounter(prev => prev + 1); // Triggers refresh for UserDataTable after completion.
+          // currentStep will remain 4 (completion screen).
         } catch (err) {
           console.error('Failed to mark onboarding complete:', err);
           setError(err.message || 'Failed to finalize onboarding.');
@@ -232,16 +251,25 @@ export const OnboardingProvider = ({ children }) => {
         }
       }
     }
-    setError(null); // Clear previous errors on successful navigation/operation
+    setError(null); // Clears any previous errors on successful navigation.
   }, [currentStep, userId, handleUpdateUserData]);
 
-
+  /**
+   * Moves the onboarding process back to the previous step.
+   */
   const prevStep = useCallback(() => {
-    setCurrentStep(prev => Math.max(1, prev - 1));
-    setError(null); // Clear errors when navigating back
+    setCurrentStep(prev => Math.max(1, prev - 1)); // Ensures step does not go below 1.
+    setError(null); // Clears any errors when moving back.
   }, []);
 
   // --- Admin Actions (Backend Communication) ---
+
+  /**
+   * Updates the global administrative configuration on the backend.
+   * @param {object} newConfig - The new configuration object to save.
+   * @returns {Promise<void>} A promise that resolves when the configuration is updated.
+   * @throws {Error} If the update fails.
+   */
   const updateAdminConfiguration = useCallback(async (newConfig) => {
     try {
       setLoading(true);
@@ -259,7 +287,7 @@ export const OnboardingProvider = ({ children }) => {
       if (!response.ok) {
         throw new Error(data.error || `HTTP error! status: ${response.status}`);
       }
-      setAdminConfig(data.config); // Backend returns the updated config
+      setAdminConfig(data.config); // Updates the local admin config state.
       console.log('Admin configuration updated successfully on backend.');
 
     } catch (err) {
@@ -272,8 +300,8 @@ export const OnboardingProvider = ({ children }) => {
   }, []);
 
   /**
-   * Returns the actual React components to render for a given customizable page.
-   * This is used by OnboardingSteps.js.
+   * Returns the actual React components to render for a given customizable page,
+   * based on the administrative configuration.
    * @param {number} pageNumber - 2 for custom page 1, 3 for custom page 2.
    * @returns {Array<{id: string, Component: React.ComponentType}>} Array of component objects.
    */
@@ -283,7 +311,7 @@ export const OnboardingProvider = ({ children }) => {
     const pageComponents = adminConfig[`page${pageNumber}`] || [];
     const components = [];
 
-    // Dynamically map string IDs from admin config to actual React components
+    // Dynamically maps string IDs from admin config to actual React components.
     for (const compId of pageComponents) {
       if (compId === 'aboutMe') {
         components.push({ id: 'aboutMe', Component: AboutMeInput });
@@ -292,14 +320,19 @@ export const OnboardingProvider = ({ children }) => {
       } else if (compId === 'birthdate') {
         components.push({ id: 'birthdate', Component: BirthdateInput });
       }
-      // Add more else if blocks here if you add more customizable components later
+      // Add more else if blocks here if you add more customizable components later.
     }
     return components;
   }, [adminConfig]);
 
-
   // --- Helper for UserDataTable (now fetches from backend) ---
-  const getAllUsersData = useCallback(async () => { // Renamed from getAllMockUsersData
+
+  /**
+   * Fetches all registered users' data from the backend.
+   * @returns {Promise<Array<object>>} A promise that resolves to an array of user objects.
+   * @throws {Error} If fetching users fails.
+   */
+  const getAllUsersData = useCallback(async () => {
     try {
       console.log('Fetching all users from backend...');
       const response = await fetch(`${API_BASE_URL}/admin/users`);
@@ -316,7 +349,13 @@ export const OnboardingProvider = ({ children }) => {
     }
   }, []);
 
-  const deleteUser = useCallback(async (idToDelete) => { // Renamed from deleteMockUser
+  /**
+   * Deletes a user from the backend.
+   * If the deleted user is the currently active user, clears local session data.
+   * @param {string} idToDelete - The ID of the user to delete.
+   * @returns {Promise<boolean>} A promise that resolves to `true` if deletion was successful, `false` otherwise.
+   */
+  const deleteUser = useCallback(async (idToDelete) => {
     try {
       setLoading(true);
       setError(null);
@@ -329,23 +368,34 @@ export const OnboardingProvider = ({ children }) => {
         throw new Error(data.message || `HTTP error! status: ${response.status}`);
       }
       console.log(`User ${idToDelete} deleted successfully from backend.`);
-      // If the currently active user is deleted, clear local state
+      // If the currently active user is deleted, clear local state.
       if (userId === idToDelete) {
         localStorage.removeItem('onboardingUserId');
         setUserId(null);
         setOnboardingData({});
-        setCurrentStep(1); // Reset to initial registration step
+        setCurrentStep(1); // Reset to initial registration step.
       }
-      return true; // Indicate success
+      setUserListRefreshCounter(prev => prev + 1); // Triggers refresh for UserDataTable.
+      return true; // Indicates success.
     } catch (e) {
       console.error(`Error deleting user ${idToDelete} from backend:`, e);
       setError(`Failed to delete user ${idToDelete}: ${e.message}.`);
-      return false; // Indicate failure
+      return false; // Indicates failure.
     } finally {
       setLoading(false);
     }
   }, [userId]);
 
+  // Resets all local onboarding state and clears user ID from localStorage.
+  const resetOnboarding = useCallback(() => {
+    localStorage.removeItem('onboardingUserId');
+    setUserId(null);
+    setOnboardingData({});
+    setCurrentStep(1);
+    setError(null);
+    setLoading(false);
+    console.log('Client-side onboarding state reset.');
+  }, []);
 
   const contextValue = {
     userId,
@@ -361,20 +411,10 @@ export const OnboardingProvider = ({ children }) => {
     prevStep,
     updateAdminConfiguration,
     getComponentsForPage,
-    getAllUsersData, // Renamed
-    deleteUser,     // Renamed
-    resetOnboarding: useCallback(() => {
-        // For a full reset (e.g., if a user explicitly logs out or wants to start fresh)
-        // Clear client-side stored user ID and reset state.
-        // Backend data persists unless explicitly deleted via admin panel.
-        localStorage.removeItem('onboardingUserId');
-        setUserId(null);
-        setOnboardingData({});
-        setCurrentStep(1); // Reset to the first step (registration)
-        setError(null);    // Clear any previous errors
-        setLoading(false); // Ensure loading is off
-        console.log('Client-side onboarding state reset.');
-    }, [])
+    getAllUsersData,
+    deleteUser,
+    userListRefreshCounter, // Exposes the counter to trigger data refreshes.
+    resetOnboarding,
   };
 
   return (
@@ -384,6 +424,12 @@ export const OnboardingProvider = ({ children }) => {
   );
 };
 
+/**
+ * Custom hook to consume the onboarding context.
+ *
+ * @returns {object} The onboarding context value.
+ * @throws {Error} If used outside of an OnboardingProvider.
+ */
 export const useOnboarding = () => {
   const context = useContext(OnboardingContext);
   if (!context) {

@@ -2,15 +2,15 @@
 import React from 'react';
 
 /**
- * Reusable button component.
+ * Reusable button component with customizable properties.
  *
- * @param {Object} props - Component props.
- * @param {function} props.onClick - Callback function triggered when the button is clicked.
- * @param {React.ReactNode} props.children - The content to be rendered inside the button (e.g., text, icon).
- * @param {string} [props.type='button'] - The HTML 'type' attribute for the button (e.g., 'submit', 'button', 'reset').
- * @param {string} [props.className] - Optional additional Tailwind CSS classes for custom styling.
- * @param {boolean} [props.disabled=false] - Optional boolean to disable the button.
- * @returns {JSX.Element} A styled button.
+ * @param {object} props - Component props.
+ * @param {function} props.onClick - Handler for button click events.
+ * @param {React.ReactNode} props.children - Content displayed inside the button.
+ * @param {string} [props.type='button'] - HTML button type.
+ * @param {string} [props.className] - Additional Tailwind CSS classes.
+ * @param {boolean} [props.disabled=false] - If true, the button is disabled.
+ * @returns {JSX.Element} A styled button element.
  */
 const Button = ({ onClick, children, type = 'button', className = '', disabled = false }) => {
   return (
@@ -18,8 +18,15 @@ const Button = ({ onClick, children, type = 'button', className = '', disabled =
       type={type}
       onClick={onClick}
       disabled={disabled}
-      // Tailwind CSS classes for consistent styling
-      className={`bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      className={`
+        bg-primary-blue-600 hover:bg-primary-blue-700 
+        dark:bg-primary-blue-700 dark:hover:bg-primary-blue-800
+        text-white font-bold py-2 px-4 rounded 
+        focus:outline-none focus:shadow-outline 
+        transition-colors duration-200 ease-in-out
+        ${className} 
+        ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
+      `}
     >
       {children}
     </button>
